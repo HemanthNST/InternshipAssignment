@@ -89,8 +89,8 @@ export default function ManagerPage() {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
         s =>
-          s.ticketid?.toLowerCase().includes(query) ||
-          s.vehicle?.vehiclenumber?.toLowerCase().includes(query) ||
+          s.ticketId?.toLowerCase().includes(query) ||
+          s.vehicle?.number?.toLowerCase().includes(query) ||
           s.site?.name?.toLowerCase().includes(query)
       );
     }
@@ -280,11 +280,11 @@ export default function ManagerPage() {
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <h4 className="font-bold text-gray-800 mb-1">
-                      {session.vehicle?.vehiclemodel}
+                      {session.vehicle?.model}
                     </h4>
                     <p className="text-sm text-gray-600 flex items-center gap-1">
                       <Car size={14} />
-                      {session.vehicle?.vehiclenumber}
+                      {session.vehicle?.number}
                     </p>
                   </div>
                   <div className="text-right">
@@ -309,17 +309,13 @@ export default function ManagerPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock size={14} />
-                    <span>
-                      {new Date(
-                        session.entrytime || session.createdat
-                      ).toLocaleString()}
-                    </span>
+                    <span>{new Date(session.createdAt).toLocaleString()}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle size={14} />
                     <span>
                       {session.valet?.name || "Unassigned"} • Ticket:{" "}
-                      {session.ticketid}
+                      {session.ticketId}
                     </span>
                   </div>
                 </div>
@@ -356,8 +352,8 @@ export default function ManagerPage() {
             <div className="bg-gray-50 rounded-xl p-4 mb-6">
               <p className="text-xs text-gray-500 mb-1">Vehicle</p>
               <p className="font-bold text-gray-800 mb-3">
-                {selectedSession.vehicle?.vehiclemodel} (
-                {selectedSession.vehicle?.vehiclenumber})
+                {selectedSession.vehicle?.model} (
+                {selectedSession.vehicle?.number})
               </p>
               <p className="text-xs text-gray-500 mb-1">Location</p>
               <p className="font-bold text-gray-800 mb-3">
