@@ -38,6 +38,20 @@ export const parkingAPI = {
     apiClient.get(`/parking/sessions/ticket/${ticketId}`),
 };
 
+// ============ TEST API (Development) ============
+export const testAPI = {
+  getTestUser: () => apiClient.get("/test/test-user"),
+
+  getTestDriver: () => apiClient.get("/test/test-driver"),
+
+  getTestAdmin: () => apiClient.get("/test/test-admin"),
+
+  getUserVehicles: (userId: string) =>
+    apiClient.get(`/test/user/${userId}/vehicles`),
+
+  getSites: () => apiClient.get("/test/sites"),
+};
+
 // ============ ASSIGNMENT API ============
 export const assignmentAPI = {
   getDriverAssignments: (driverId: string) =>
@@ -83,6 +97,8 @@ export const adminAPI = {
   getAllSites: () => apiClient.get("/admin/sites"),
 
   getPendingApprovals: () => apiClient.get("/admin/approvals/pending"),
+
+  getAllApprovals: () => apiClient.get("/admin/approvals"),
 
   approveDriver: (approvalId: string) =>
     apiClient.patch(`/admin/approvals/${approvalId}/approve`),

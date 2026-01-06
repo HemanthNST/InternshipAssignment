@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PARKING_SITES } from "../lib/sites";
+import { parkingAPI, testAPI } from "../lib/api";
 import {
   QrCode,
   Ticket,
@@ -18,25 +19,62 @@ import {
   CaretRight,
 } from "phosphor-react";
 
+interface ParkingSession {
+  id: string;
+  ticketid: string;
+  userid: string;
+  vehicleid: string;
+  siteid: string;
+  valetid?: string;
+  status:
+    | "parked"
+    | "in-progress"
+    | "retrieved"
+    | "ongoing"
+    | "completed"
+    | "cancelled";
+  entrytime: string;
+  exittime?: string;
+  parkinglevel?: string;
+  amount?: number;
+  amountcharged?: number;
+  paymentmethod?: string;
+  ispaid?: boolean;
+  createdat: string;
+  updatedat: string;
+  site?: { name: string; location: string };
+  vehicle?: { vehiclenumber: string; vehiclemodel: string };
+  valet?: { id: string; name: string };
+}
+
 export default function UserHome() {
+  const [userId, setUserId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("testUserId") || "user-1";
+    }
+    return "user-1";
+  });
+
   const [activeTab, setActiveTab] = useState<
     "home" | "ticket" | "history" | "settings"
   >("home");
   const [showScanModal, setShowScanModal] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [selectedLocation, setSelectedLocation] = useState("");
+  const [selectedLocationId, setSelectedLocationId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [selectedParkingIndex, setSelectedParkingIndex] = useState(0);
-  const [currentActiveParkings, setCurrentActiveParkings] = useState([
-    {
-      id: 1,
-      location: "Inorbit Mall",
-      vehicle: "MH 12 AB 1234",
-      entryTime: "01:08 pm",
-      duration: "14m",
-      status: "Parked",
-    },
-  ]);
+
+  // API Data
+  const [currentActiveParkings, setCurrentActiveParkings] = useState<
+    ParkingSession[]
+  >([]);
+  const [recentParkings, setRecentParkings] = useState<ParkingSession[]>([]);
+  const [userVehicles, setUserVehicles] = useState<any[]>([]);
+  const [parkingSites, setParkingSites] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [isGettingCar, setIsGettingCar] = useState(false);
   const [editingProfile, setEditingProfile] = useState<string | null>(null);
   const [profileData, setProfileData] = useState({
@@ -52,136 +90,202 @@ export default function UserHome() {
   const [retrievalStep, setRetrievalStep] = useState<"loading" | "success">(
     "loading"
   );
-  const [recentParkings, setRecentParkings] = useState([
-    {
-      id: 1,
-      location: "Phoenix Mall",
-      address: "Lower Parel, Mumbai",
-      vehicle: "MH 12 AB 1234",
-      date: "8 Dec 2025",
-      time: "4h 15m",
-      amount: "₹180",
-      status: "Completed",
-    },
-    {
-      id: 2,
-      location: "Central Plaza",
-      address: "Andheri West, Mumbai",
-      vehicle: "MH 12 AB 1234",
-      date: "6 Dec 2025",
-      time: "2h 30m",
-      amount: "₹120",
-      status: "Completed",
-    },
-  ]);
 
-  // Mock data
-  const mockVehicles = [
-    { id: 1, number: "MH 12 AB 1234", model: "Toyota Camry" },
-    { id: 2, number: "MH 12 AB 5678", model: "Honda City" },
-  ];
+  // Mock data for vehicles (in real app, fetch from API)
+  // Now using real data from userVehicles state instead
 
-  const mockLocations = PARKING_SITES.map(
-    site => `${site.name}, ${site.location}`
-  );
+  // Fetch parking sessions on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        console.log("🔍 Starting fetchData...");
+
+        // First, try to get userId from localStorage
+        let currentUserId = userId;
+        console.log("📱 Current userId from state:", currentUserId);
+        console.log(
+          "💾 localStorage testUserId:",
+          localStorage.getItem("testUserId")
+        );
+
+        // If no userId in localStorage, fetch a test user
+        if (!currentUserId || currentUserId === "user-1") {
+          console.log("⚠️ userId is invalid or default, fetching test user...");
+          try {
+            console.log("🌐 Calling testAPI.getTestUser()...");
+            const userResponse = await testAPI.getTestUser();
+            console.log("✅ Test user response:", userResponse.data);
+            currentUserId = userResponse.data.id;
+            console.log("🎯 Got userId:", currentUserId);
+            setUserId(currentUserId);
+            localStorage.setItem("testUserId", currentUserId);
+            console.log("💾 Saved to localStorage");
+          } catch (userErr: any) {
+            console.error("❌ Failed to fetch test user:", userErr);
+            console.error(
+              "📋 Error details:",
+              userErr.response?.data || userErr.message
+            );
+            setError("Failed to load user data");
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Now fetch sessions for this user
+        console.log("🚗 Fetching sessions for userId:", currentUserId);
+        const response = await parkingAPI.getUserSessions(currentUserId);
+        console.log("✅ Sessions response:", response.data);
+        const sessions = response.data;
+
+        // Separate active and completed sessions
+        const active = sessions.filter(
+          (s: ParkingSession) => s.status !== "retrieved"
+        );
+        const completed = sessions.filter(
+          (s: ParkingSession) => s.status === "retrieved"
+        );
+
+        console.log("📊 Active sessions:", active.length);
+        console.log("📊 Completed sessions:", completed.length);
+
+        setCurrentActiveParkings(active);
+        setRecentParkings(completed);
+
+        // Fetch user vehicles
+        console.log("🚗 Fetching vehicles for userId:", currentUserId);
+        try {
+          const vehiclesResponse = await testAPI.getUserVehicles(currentUserId);
+          console.log("✅ Vehicles response:", vehiclesResponse.data);
+          setUserVehicles(vehiclesResponse.data || []);
+        } catch (vehicleErr) {
+          console.error("⚠️ Failed to fetch vehicles:", vehicleErr);
+          setUserVehicles([]);
+        }
+
+        // Fetch parking sites from backend
+        console.log("📍 Fetching sites...");
+        try {
+          const sitesResponse = await testAPI.getSites();
+          console.log("✅ Sites response:", sitesResponse.data);
+          setParkingSites(sitesResponse.data || []);
+        } catch (sitesErr) {
+          console.error("⚠️ Failed to fetch sites:", sitesErr);
+          setParkingSites(PARKING_SITES); // Fallback to constant if API fails
+        }
+
+        setError(null);
+      } catch (err: any) {
+        console.error("❌ Failed to fetch sessions:", err);
+        console.error("📋 Error response:", err.response?.data || err.message);
+        setError("Failed to load parking data");
+        setCurrentActiveParkings([]);
+        setRecentParkings([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   const handleParkCar = async () => {
-    if (selectedVehicle && selectedLocation && paymentMethod) {
+    if (selectedVehicle && selectedLocationId && paymentMethod) {
       setShowParkingModal(true);
       setParkingStep("loading");
 
-      // Simulate parking process
-      await new Promise(resolve => setTimeout(resolve, 2500));
+      try {
+        const response = await parkingAPI.createSession({
+          userId: userId,
+          vehicleId: selectedVehicle,
+          siteId: selectedLocationId,
+          status: "parked",
+        });
 
-      // Add to active parkings
-      const newParking = {
-        id: currentActiveParkings.length + 1,
-        location: selectedLocation.split(",")[0],
-        vehicle: selectedVehicle,
-        entryTime: new Date().toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        duration: "1m",
-        status: "Parked",
-      };
-      setCurrentActiveParkings([...currentActiveParkings, newParking]);
-      setParkingStep("success");
+        if (response.status === 201) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Auto close after 1.5 seconds on success
-      setTimeout(() => {
+          const sessionsResponse = await parkingAPI.getUserSessions(userId);
+          const active = sessionsResponse.data.filter(
+            (s: ParkingSession) => s.status !== "retrieved"
+          );
+          setCurrentActiveParkings(active);
+
+          setParkingStep("success");
+
+          setTimeout(() => {
+            setShowParkingModal(false);
+            setShowScanModal(false);
+            setSelectedVehicle("");
+            setSelectedLocation("");
+            setSelectedLocationId("");
+            setPaymentMethod("");
+          }, 1500);
+        }
+      } catch (err: any) {
+        console.error("Failed to create parking session:", err);
+        alert("Failed to park car. Please try again.");
         setShowParkingModal(false);
-        setShowScanModal(false);
-        setSelectedVehicle("");
-        setSelectedLocation("");
-        setPaymentMethod("");
-      }, 1500);
+      }
     }
   };
 
   const handleGetCar = async () => {
+    if (currentActiveParkings.length === 0) {
+      alert("No active parking to retrieve");
+      return;
+    }
+
+    const parkingToRetrieve = currentActiveParkings[selectedParkingIndex];
     setShowRetrievalModal(true);
     setRetrievalStep("loading");
 
-    // Simulate retrieval process
-    await new Promise(resolve => setTimeout(resolve, 2500));
-
-    // Get the parking being retrieved using selectedParkingIndex
-    const parkingToMove = currentActiveParkings[selectedParkingIndex];
-
-    if (parkingToMove) {
-      // Calculate random duration for the parking
-      const durationMinutes = Math.floor(Math.random() * 240) + 15; // 15 to 255 minutes
-      const hours = Math.floor(durationMinutes / 60);
-      const minutes = durationMinutes % 60;
-      const durationString =
-        hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-
-      // Calculate amount (₹30 per hour)
-      const amount = Math.ceil((durationMinutes / 60) * 30);
-
-      // Get current date and time
-      const now = new Date();
-      const dateString = now.toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
+    try {
+      const response = await parkingAPI.updateSession(parkingToRetrieve.id, {
+        status: "retrieved",
       });
 
-      // Add to recent parkings
-      const completedParking = {
-        id: recentParkings.length + 1,
-        location: parkingToMove.location,
-        address: `${parkingToMove.location}, Mumbai`,
-        vehicle: parkingToMove.vehicle,
-        date: dateString,
-        time: durationString,
-        amount: `₹${amount}`,
-        status: "Completed",
-      };
+      if (response.status === 200) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
-      setRecentParkings([completedParking, ...recentParkings]);
+        const sessionsResponse = await parkingAPI.getUserSessions(userId);
+        const active = sessionsResponse.data.filter(
+          (s: ParkingSession) => s.status !== "retrieved"
+        );
+        const completed = sessionsResponse.data.filter(
+          (s: ParkingSession) => s.status === "retrieved"
+        );
 
-      // Remove the specific car from active parkings
-      const updatedParkings = currentActiveParkings.filter(
-        p => p.vehicle !== parkingToMove.vehicle
-      );
-      setCurrentActiveParkings(updatedParkings);
+        setCurrentActiveParkings(active);
+        setRecentParkings(completed);
 
-      // Reset selected index if needed
-      if (selectedParkingIndex >= updatedParkings.length) {
-        setSelectedParkingIndex(Math.max(0, updatedParkings.length - 1));
+        setRetrievalStep("success");
+
+        setTimeout(() => {
+          setShowRetrievalModal(false);
+          setIsGettingCar(false);
+        }, 1500);
       }
-    }
-
-    setRetrievalStep("success");
-
-    // Auto close after 1.5 seconds on success
-    setTimeout(() => {
+    } catch (err: any) {
+      console.error("Failed to retrieve car:", err);
+      alert("Failed to retrieve car. Please try again.");
       setShowRetrievalModal(false);
-      setIsGettingCar(false);
-    }, 1500);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="h-full bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin mb-4">
+            <Car size={48} className="text-primary mx-auto" />
+          </div>
+          <p className="text-gray-600">Loading parking data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full bg-white relative flex flex-col overflow-hidden">
@@ -204,6 +308,12 @@ export default function UserHome() {
 
       {/* Main Content */}
       <div className="px-4 pb-32 flex-1 overflow-y-auto">
+        {error && (
+          <div className="mt-4 bg-red-100 border border-red-300 text-red-700 p-4 rounded-xl">
+            {error}
+          </div>
+        )}
+
         {activeTab === "home" && (
           <>
             {/* Scan to Park Button */}
@@ -229,10 +339,14 @@ export default function UserHome() {
                   Active Parking
                 </h3>
                 <div className="space-y-3 mb-6">
-                  {currentActiveParkings.map(parking => (
+                  {currentActiveParkings.map((parking, index) => (
                     <div
                       key={parking.id}
-                      className="bg-gradient-to-br from-green-100 to-emerald-100 border-2 border-green-300 rounded-2xl p-4">
+                      onClick={() => {
+                        setSelectedParkingIndex(index);
+                        setActiveTab("ticket");
+                      }}
+                      className="bg-gradient-to-br from-green-100 to-emerald-100 border-2 border-green-300 rounded-2xl p-4 cursor-pointer hover:shadow-lg transition-shadow">
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <div className="text-2xl mb-1">
@@ -243,21 +357,27 @@ export default function UserHome() {
                             />
                           </div>
                           <h4 className="font-bold text-gray-800">
-                            {parking.location}
+                            {parking.site?.name}
                           </h4>
+                          <p className="text-xs text-gray-500 flex items-center gap-1">
+                            <MapPin size={12} /> {parking.site?.location}
+                          </p>
                         </div>
                         <span className="text-xl">›</span>
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-700 mb-2">
                         <span className="flex items-center gap-1">
-                          <Clock size={16} /> {parking.entryTime}
+                          <Clock size={16} />
+                          {new Date(parking.entrytime).toLocaleTimeString()}
                         </span>
                         <span className="flex items-center gap-1">
-                          <Car size={16} /> {parking.vehicle}
+                          <Car size={16} /> {parking.vehicle?.vehiclenumber}
                         </span>
                       </div>
                       <div className="inline-block bg-green-500 text-white text-xs font-bold py-1 px-3 rounded-full">
-                        ● {parking.status} • {parking.duration}
+                        ●{" "}
+                        {parking.status.charAt(0).toUpperCase() +
+                          parking.status.slice(1)}
                       </div>
                     </div>
                   ))}
@@ -269,50 +389,54 @@ export default function UserHome() {
             <h3 className="text-lg font-bold text-gray-800 mb-3">
               Recent Parking
             </h3>
-            <div className="space-y-3">
-              {recentParkings.map(parking => (
-                <div
-                  key={parking.id}
-                  className="border border-gray-200 rounded-2xl p-4 hover:shadow-md transition-all">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="text-2xl mb-1">
-                        <QrCode
-                          size={24}
-                          weight="fill"
-                          className="text-blue-600"
-                        />
+            {recentParkings.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">
+                No parking history yet
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {recentParkings.map(parking => (
+                  <div
+                    key={parking.id}
+                    className="border border-gray-200 rounded-2xl p-4 hover:shadow-md transition-all">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="text-2xl mb-1">
+                          <QrCode
+                            size={24}
+                            weight="fill"
+                            className="text-blue-600"
+                          />
+                        </div>
+                        <h4 className="font-bold text-gray-800">
+                          {parking.site?.name}
+                        </h4>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          <MapPin size={12} /> {parking.site?.location}
+                        </p>
                       </div>
-                      <h4 className="font-bold text-gray-800">
-                        {parking.location}
-                      </h4>
-                      <p className="text-xs text-gray-500 flex items-center gap-1">
-                        <MapPin size={12} /> {parking.address}
-                      </p>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-green-600">
+                          ₹150
+                        </div>
+                        <div className="text-xs font-semibold text-green-600">
+                          Completed
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-green-600">
-                        {parking.amount}
-                      </div>
-                      <div className="text-xs font-semibold text-green-600">
-                        {parking.status}
-                      </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                      <span className="flex items-center gap-1">
+                        <CalendarBlank size={14} />
+                        {new Date(parking.createdat).toLocaleDateString()}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Car size={14} /> {parking.vehicle?.vehiclenumber}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
-                    <span className="flex items-center gap-1">
-                      <CalendarBlank size={14} /> {parking.date}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Car size={14} /> {parking.vehicle}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock size={14} /> {parking.time}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 
@@ -337,7 +461,6 @@ export default function UserHome() {
               </div>
             ) : (
               <div className="bg-gradient-to-b from-primary to-blue-600 text-white rounded-2xl p-6 text-center mb-6">
-                {/* Navigation Arrows for Multiple Parkings */}
                 {currentActiveParkings.length > 1 && (
                   <div className="flex items-center justify-between mb-6">
                     <button
@@ -371,21 +494,17 @@ export default function UserHome() {
                 )}
 
                 <h2 className="text-xl font-bold mb-2">
-                  {currentActiveParkings[selectedParkingIndex].location}
+                  {currentActiveParkings[selectedParkingIndex]?.site?.name}
                 </h2>
                 <p className="text-blue-100 mb-4">
-                  {currentActiveParkings[selectedParkingIndex].location}, Mumbai
+                  {currentActiveParkings[selectedParkingIndex]?.site?.location}
                 </p>
 
                 <div className="bg-white text-gray-800 rounded-xl p-6 mb-4">
                   <div className="mb-4">
                     <p className="text-xs text-gray-500 mb-1">TICKET ID</p>
                     <p className="text-2xl font-bold text-primary">
-                      TK-2026-01-
-                      {String(
-                        currentActiveParkings[selectedParkingIndex].id
-                      ).padStart(2, "0")}
-                      -{Math.floor(Math.random() * 900) + 100}
+                      {currentActiveParkings[selectedParkingIndex]?.ticketid}
                     </p>
                   </div>
 
@@ -393,33 +512,35 @@ export default function UserHome() {
                     <div>
                       <p className="text-xs text-gray-500">Vehicle</p>
                       <p className="font-bold">
-                        {currentActiveParkings[selectedParkingIndex].vehicle}
+                        {
+                          currentActiveParkings[selectedParkingIndex]?.vehicle
+                            ?.vehiclenumber
+                        }
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">Entry Time</p>
                       <p className="font-bold">
-                        {new Date().toLocaleDateString("en-GB", {
+                        {new Date(
+                          currentActiveParkings[selectedParkingIndex]?.entrytime
+                        ).toLocaleDateString("en-GB", {
                           day: "numeric",
                           month: "short",
                           year: "numeric",
                         })}
                       </p>
                       <p className="text-sm text-gray-700">
-                        {currentActiveParkings[selectedParkingIndex].entryTime}
+                        {new Date(
+                          currentActiveParkings[selectedParkingIndex]?.entrytime
+                        ).toLocaleTimeString()}
                       </p>
                     </div>
                   </div>
 
                   <div className="border-t border-gray-200 pt-4">
-                    <p className="text-xs text-gray-500 mb-2">
-                      Duration:{" "}
-                      {currentActiveParkings[selectedParkingIndex].duration}
-                    </p>
                     <p className="text-2xl font-bold text-primary mb-2">₹150</p>
                     <p className="text-xs text-gray-500 mb-4">Amount Paid</p>
 
-                    {/* Fake QR Code */}
                     <div className="bg-gray-200 w-24 h-24 rounded-lg mx-auto mb-4 flex items-center justify-center">
                       <QrCode
                         size={48}
@@ -464,50 +585,54 @@ export default function UserHome() {
             <h3 className="text-lg font-bold text-gray-800 mb-4">
               Parking History
             </h3>
-            {recentParkings.map(parking => (
-              <div
-                key={parking.id}
-                className="border border-gray-200 rounded-2xl p-4 hover:shadow-md transition-all">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-2xl">
-                        <QrCode
-                          size={24}
-                          weight="fill"
-                          className="text-blue-600"
-                        />
-                      </span>
-                      <h4 className="font-bold text-gray-800">
-                        {parking.location}
-                      </h4>
+            {recentParkings.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">
+                No parking history yet
+              </p>
+            ) : (
+              recentParkings.map(parking => (
+                <div
+                  key={parking.id}
+                  className="border border-gray-200 rounded-2xl p-4 hover:shadow-md transition-all">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-2xl">
+                          <QrCode
+                            size={24}
+                            weight="fill"
+                            className="text-blue-600"
+                          />
+                        </span>
+                        <h4 className="font-bold text-gray-800">
+                          {parking.site?.name}
+                        </h4>
+                      </div>
+                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                        <MapPin size={12} /> {parking.site?.location}
+                      </p>
                     </div>
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                      <MapPin size={12} /> {parking.address}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-green-600">
-                      {parking.amount}
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-green-600">
+                        ₹150
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-600 mb-2">
+                    <span className="flex items-center gap-1">
+                      <Car size={14} /> {parking.vehicle?.vehiclenumber}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <CalendarBlank size={14} />
+                      {new Date(parking.createdat).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="inline-block bg-green-100 text-green-700 text-xs font-bold py-1 px-3 rounded-full">
+                    Completed
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-600 mb-2">
-                  <span className="flex items-center gap-1">
-                    <Car size={14} /> {parking.vehicle}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <CalendarBlank size={14} /> {parking.date}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock size={14} /> {parking.time}
-                  </span>
-                </div>
-                <div className="inline-block bg-green-100 text-green-700 text-xs font-bold py-1 px-3 rounded-full">
-                  {parking.status}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         )}
 
@@ -567,22 +692,30 @@ export default function UserHome() {
             {/* Vehicles Section */}
             <div className="border border-gray-200 rounded-2xl p-4">
               <h4 className="font-bold text-gray-800 mb-3">Vehicles</h4>
-              {mockVehicles.map(vehicle => (
-                <button
-                  key={vehicle.id}
-                  onClick={() =>
-                    alert(`Editing ${vehicle.model} - ${vehicle.number}`)
-                  }
-                  className="w-full flex justify-between items-center px-4 py-3 bg-gray-100 rounded-lg mb-2 hover:bg-gray-200 transition-all">
-                  <div className="text-left">
-                    <p className="font-semibold text-gray-800">
-                      {vehicle.model}
-                    </p>
-                    <p className="text-xs text-gray-500">{vehicle.number}</p>
-                  </div>
-                  <span className="text-lg">✎</span>
-                </button>
-              ))}
+              {userVehicles && userVehicles.length > 0 ? (
+                userVehicles.map((vehicle: any) => (
+                  <button
+                    key={vehicle.id}
+                    onClick={() =>
+                      alert(
+                        `Editing ${vehicle.vehiclemodel} - ${vehicle.vehiclenumber}`
+                      )
+                    }
+                    className="w-full flex justify-between items-center px-4 py-3 bg-gray-100 rounded-lg mb-2 hover:bg-gray-200 transition-all">
+                    <div className="text-left">
+                      <p className="font-semibold text-gray-800">
+                        {vehicle.vehiclemodel}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {vehicle.vehiclenumber}
+                      </p>
+                    </div>
+                    <span className="text-lg">✎</span>
+                  </button>
+                ))
+              ) : (
+                <p className="text-gray-500 text-center py-4">No vehicles</p>
+              )}
               <button
                 onClick={() => alert("Adding new vehicle... Form opened.")}
                 className="w-full mt-2 px-4 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-all font-semibold flex items-center justify-center gap-2">
@@ -620,7 +753,9 @@ export default function UserHome() {
                   <span className="font-bold text-red-600">-₹150</span>
                 </div>
                 <div className="flex justify-between px-4 py-2 bg-gray-100 rounded-lg">
-                  <span className="text-gray-800">Phoenix Mall • Dec 8</span>
+                  <span className="text-gray-800">
+                    Phoenix Courtyard • Jan 2
+                  </span>
                   <span className="font-bold text-red-600">-₹180</span>
                 </div>
               </div>
@@ -638,26 +773,36 @@ export default function UserHome() {
             </h3>
 
             <div className="space-y-3 mb-6">
-              {mockVehicles
-                .filter(
-                  vehicle =>
-                    !currentActiveParkings.some(
-                      p => p.vehicle === vehicle.number
-                    )
-                )
-                .map(vehicle => (
-                  <button
-                    key={vehicle.id}
-                    onClick={() => setSelectedVehicle(vehicle.number)}
-                    className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
-                      selectedVehicle === vehicle.number
-                        ? "border-primary bg-blue-50"
-                        : "border-gray-200 hover:border-primary"
-                    }`}>
-                    <p className="font-bold text-gray-800">{vehicle.model}</p>
-                    <p className="text-sm text-gray-600">{vehicle.number}</p>
-                  </button>
-                ))}
+              {userVehicles && userVehicles.length > 0 ? (
+                userVehicles
+                  .filter(
+                    vehicle =>
+                      !currentActiveParkings.some(
+                        p => p.vehicle?.vehiclenumber === vehicle.vehiclenumber
+                      )
+                  )
+                  .map(vehicle => (
+                    <button
+                      key={vehicle.id}
+                      onClick={() => setSelectedVehicle(vehicle.id)}
+                      className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
+                        selectedVehicle === vehicle.id
+                          ? "border-primary bg-blue-50"
+                          : "border-gray-200 hover:border-primary"
+                      }`}>
+                      <p className="font-bold text-gray-800">
+                        {vehicle.vehiclemodel}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {vehicle.vehiclenumber}
+                      </p>
+                    </button>
+                  ))
+              ) : (
+                <p className="text-gray-500 text-center py-4">
+                  No vehicles available
+                </p>
+              )}
             </div>
 
             {selectedVehicle && (
@@ -666,24 +811,33 @@ export default function UserHome() {
                   Select Parking Location
                 </h4>
                 <div className="space-y-3 mb-6">
-                  {mockLocations.map(location => (
-                    <button
-                      key={location}
-                      onClick={() => setSelectedLocation(location)}
-                      className={`w-full p-3 rounded-xl border-2 transition-all text-left flex items-center gap-2 ${
-                        selectedLocation === location
-                          ? "border-primary bg-blue-50"
-                          : "border-gray-200 hover:border-primary"
-                      }`}>
-                      <MapPin size={16} />
-                      {location}
-                    </button>
-                  ))}
+                  {parkingSites && parkingSites.length > 0 ? (
+                    parkingSites.map(site => (
+                      <button
+                        key={site.id}
+                        onClick={() => {
+                          setSelectedLocation(`${site.name}, ${site.location}`);
+                          setSelectedLocationId(site.id);
+                        }}
+                        className={`w-full p-3 rounded-xl border-2 transition-all text-left flex items-center gap-2 ${
+                          selectedLocationId === site.id
+                            ? "border-primary bg-blue-50"
+                            : "border-gray-200 hover:border-primary"
+                        }`}>
+                        <MapPin size={16} />
+                        {site.name}, {site.location}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="text-gray-500 text-center py-4">
+                      No sites available
+                    </p>
+                  )}
                 </div>
               </>
             )}
 
-            {selectedVehicle && selectedLocation && (
+            {selectedVehicle && selectedLocationId && (
               <>
                 <h4 className="text-lg font-bold text-gray-800 mb-3">
                   Select Payment Method
@@ -706,7 +860,7 @@ export default function UserHome() {
                 <button
                   onClick={handleParkCar}
                   disabled={
-                    !selectedVehicle || !selectedLocation || !paymentMethod
+                    !selectedVehicle || !selectedLocationId || !paymentMethod
                   }
                   className="w-full bg-primary hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-xl transition-all mb-2">
                   Park my car

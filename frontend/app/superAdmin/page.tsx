@@ -1,274 +1,390 @@
 "use client";
 
-import { useState } from "react";
-import { Check, X } from "phosphor-react";
-import { PARKING_SITES, SITE_PERFORMANCE_DATA } from "../lib/sites";
+import { useState, useEffect } from "react";
+import { adminAPI, testAPI } from "../lib/api";
+import { CheckCircle, XCircle, User, ChartLine, MapPin } from "phosphor-react";
 
-interface DriverApproval {
+interface Approval {
   id: string;
-  name: string;
-  email: string;
-  phone: string;
-  licenseNumber: string;
-  experience: string;
+  driverId: string;
+  driverName: string;
   status: "pending" | "approved" | "rejected";
+  createdAt: string;
 }
 
-const PENDING_DRIVERS: DriverApproval[] = [
-  {
-    id: "d1",
-    name: "Alex Rodriguez",
-    email: "alex@email.com",
-    phone: "+1-555-1001",
-    licenseNumber: "DL-2024-001",
-    experience: "5 years",
-    status: "pending",
-  },
-  {
-    id: "d2",
-    name: "Jessica Williams",
-    email: "jessica@email.com",
-    phone: "+1-555-1002",
-    licenseNumber: "DL-2024-002",
-    experience: "3 years",
-    status: "pending",
-  },
-  {
-    id: "d3",
-    name: "Marcus Johnson",
-    email: "marcus@email.com",
-    phone: "+1-555-1003",
-    licenseNumber: "DL-2024-003",
-    experience: "7 years",
-    status: "pending",
-  },
-];
-
-const SITE_STATISTICS = {
-  totalTickets: 127,
-  totalCollection: 3250.5,
-  activeParking: 24,
-};
+interface SiteStats {
+  siteId: string;
+  siteName: string;
+  totalSessions: number;
+  revenue: number;
+  activeValets: number;
+}
 
 export default function SuperAdminPage() {
-  const [activeTab, setActiveTab] = useState<"overview" | "approvals">(
-    "overview"
+  const [activeTab, setActiveTab] = useState<"approvals" | "stats">(
+    "approvals"
   );
-  const [selectedSite, setSelectedSite] = useState("1");
-  const [pendingDrivers, setPendingDrivers] =
-    useState<DriverApproval[]>(PENDING_DRIVERS);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [stats, setStats] = useState<SiteStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const selectedSiteData = PARKING_SITES.find(site => site.id === selectedSite);
-  const sitePerformance = SITE_PERFORMANCE_DATA[selectedSite];
+  // Fetch data on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
 
-  const handleApproveDriver = (driverId: string) => {
-    alert("Driver Approved");
-    setPendingDrivers(prev => prev.filter(d => d.id !== driverId));
+        // Fetch test admin first (for development)
+        try {
+          await testAPI.getTestAdmin();
+        } catch (err) {
+          console.warn("Could not fetch test admin");
+        }
+
+        // Fetch pending approvals
+        try {
+          const approvalsRes = await adminAPI.getAllApprovals();
+          console.log("📋 Raw approvals response:", approvalsRes);
+
+          // Transform approvals data
+          const transformedApprovals =
+            approvalsRes.data?.map((approval: any) => ({
+              id: approval.id,
+              driverId: approval.id,
+              driverName: approval.name || "Unknown",
+              status: approval.status || "pending",
+              createdAt: approval.submittedat || new Date().toISOString(),
+            })) || [];
+
+          console.log("✅ Transformed approvals:", transformedApprovals);
+          setApprovals(transformedApprovals);
+        } catch (err: any) {
+          console.warn("Could not fetch approvals:", err);
+          setApprovals([]);
+        }
+
+        // Fetch site stats
+        try {
+          const sitesRes = await adminAPI.getAllSites();
+          console.log("🏢 Raw sites response:", sitesRes);
+          const sitesData = sitesRes.data || [];
+
+          if (sitesData.length === 0) {
+            console.warn("⚠️ No sites returned from API");
+            setStats([]);
+          } else {
+            // Fetch stats for each site
+            const statsPromises = sitesData.map((site: any) =>
+              adminAPI.getSiteStats(site.id).then((res: any) => {
+                console.log(`📊 Stats for site ${site.id}:`, res);
+                // The response is the stats data directly, not wrapped in .data
+                const data = res.data || res;
+                console.log(`📊 Extracted data for site ${site.name}:`, data);
+                return {
+                  siteId: site.id,
+                  siteName: site.name || "Unknown Site",
+                  totalSessions: data?.totaltickets || data?.totalsessions || 0,
+                  revenue: data?.totalcollection || data?.revenue || 0,
+                  activeValets: data?.activevalets || data?.activecars || 0,
+                };
+              })
+            );
+
+            const statsData = await Promise.all(statsPromises);
+            console.log("📊 Transformed site stats:", statsData);
+            setStats(statsData || []);
+          }
+        } catch (err: any) {
+          console.error("Could not fetch site stats:", err);
+          setStats([]);
+        }
+
+        setError(null);
+      } catch (err: any) {
+        console.error("Failed to fetch admin data:", err);
+        setError("Failed to load admin data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const handleApprove = async (approval: Approval) => {
+    try {
+      await adminAPI.approveDriver(approval.id);
+      setApprovals(
+        approvals.map(a =>
+          a.id === approval.id ? { ...a, status: "approved" } : a
+        )
+      );
+      alert("Driver approved successfully");
+    } catch (err: any) {
+      console.error("Failed to approve driver:", err);
+      alert("Failed to approve driver");
+    }
   };
 
-  const handleRejectDriver = (driverId: string) => {
-    alert("Driver Rejected");
-    setPendingDrivers(prev => prev.filter(d => d.id !== driverId));
+  const handleReject = async (approval: Approval) => {
+    try {
+      await adminAPI.rejectDriver(approval.id);
+      setApprovals(
+        approvals.map(a =>
+          a.id === approval.id ? { ...a, status: "rejected" } : a
+        )
+      );
+      alert("Driver rejected successfully");
+    } catch (err: any) {
+      console.error("Failed to reject driver:", err);
+      alert("Failed to reject driver");
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="h-full bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin mb-4">
+            <ChartLine size={48} className="text-purple-600 mx-auto" />
+          </div>
+          <p className="text-gray-600">Loading admin dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const pendingApprovals = approvals.filter(a => a.status === "pending");
+  const approvedDrivers = approvals.filter(a => a.status === "approved");
+  const rejectedDrivers = approvals.filter(a => a.status === "rejected");
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 p-4 flex flex-col overflow-hidden">
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setActiveTab("overview")}
-          className={`px-6 py-3 rounded-2xl font-bold transition-all ${
-            activeTab === "overview"
-              ? "bg-purple-600 text-white"
-              : "bg-white text-purple-600 border-2 border-purple-200"
-          }`}>
-          Overview
-        </button>
-        <button
-          onClick={() => setActiveTab("approvals")}
-          className={`px-6 py-3 rounded-2xl font-bold transition-all ${
-            activeTab === "approvals"
-              ? "bg-indigo-600 text-white"
-              : "bg-white text-indigo-600 border-2 border-indigo-200"
-          }`}>
-          Approvals
-        </button>
+    <div className="h-full bg-gray-50 flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="bg-gradient-to-br from-purple-600 to-purple-700 text-white px-4 pt-6 pb-8">
+        <h1 className="text-2xl font-bold mb-1">Super Admin Dashboard</h1>
+        <p className="text-purple-100">
+          Manage drivers, approvals, and system analytics
+        </p>
       </div>
 
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto pr-2 pb-8">
-        {activeTab === "overview" ? (
-          <div className="space-y-6">
-            {/* Site Selection */}
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">
-                Select Site
-              </label>
-              <select
-                value={selectedSite}
-                onChange={e => setSelectedSite(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl border-2 border-purple-200 focus:outline-none focus:border-purple-500 bg-white font-semibold text-gray-800">
-                {PARKING_SITES.map(site => (
-                  <option key={site.id} value={site.id}>
-                    {site.name} - {site.location}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {/* Main Content */}
+      <div className="px-4 py-6 flex-1 overflow-y-auto">
+        {error && (
+          <div className="mb-4 bg-red-100 border border-red-300 text-red-700 p-4 rounded-xl">
+            {error}
+          </div>
+        )}
 
-            {/* Today's Performance */}
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                Today's Performance
-              </h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white rounded-2xl p-6 shadow-md border-l-4 border-blue-500">
-                  <p className="text-sm text-gray-600 font-semibold mb-2">
-                    TICKETS ISSUED
-                  </p>
-                  <p className="text-3xl font-bold text-blue-600">
-                    {sitePerformance?.ticketsIssued || 0}
-                  </p>
-                </div>
-                <div className="bg-white rounded-2xl p-6 shadow-md border-l-4 border-green-500">
-                  <p className="text-sm text-gray-600 font-semibold mb-2">
-                    COLLECTION
-                  </p>
-                  <p className="text-3xl font-bold text-green-600">
-                    ${sitePerformance?.collection.toFixed(2) || "0.00"}
-                  </p>
-                </div>
-              </div>
-            </div>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <p className="text-xs text-red-600 font-semibold mb-1">
+              PENDING APPROVALS
+            </p>
+            <p className="text-3xl font-bold text-red-900">
+              {pendingApprovals.length}
+            </p>
+          </div>
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+            <p className="text-xs text-green-600 font-semibold mb-1">
+              APPROVED DRIVERS
+            </p>
+            <p className="text-3xl font-bold text-green-900">
+              {approvedDrivers.length}
+            </p>
+          </div>
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+            <p className="text-xs text-purple-600 font-semibold mb-1">
+              TOTAL SITES
+            </p>
+            <p className="text-3xl font-bold text-purple-900">{stats.length}</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <p className="text-xs text-blue-600 font-semibold mb-1">
+              TOTAL REVENUE
+            </p>
+            <p className="text-3xl font-bold text-blue-900">
+              ₹{stats.reduce((sum, s) => sum + (s.revenue || 0), 0)}
+            </p>
+          </div>
+        </div>
 
-            {/* Overall Statistics */}
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                Overall Statistics
-              </h2>
-              <div className="space-y-3">
-                <div className="bg-white rounded-2xl p-4 shadow-md border-l-4 border-purple-500">
-                  <p className="text-sm text-gray-600 font-semibold mb-1">
-                    TOTAL TICKETS
-                  </p>
-                  <p className="text-2xl font-bold text-purple-600">
-                    {sitePerformance?.totalTickets || 0}
-                  </p>
-                </div>
-                <div className="bg-white rounded-2xl p-4 shadow-md border-l-4 border-indigo-500">
-                  <p className="text-sm text-gray-600 font-semibold mb-1">
-                    TOTAL COLLECTION
-                  </p>
-                  <p className="text-2xl font-bold text-indigo-600">
-                    ${sitePerformance?.totalCollection.toFixed(2) || "0.00"}
-                  </p>
-                </div>
-                <div className="bg-white rounded-2xl p-4 shadow-md border-l-4 border-orange-500">
-                  <p className="text-sm text-gray-600 font-semibold mb-1">
-                    ACTIVE PARKING
-                  </p>
-                  <p className="text-2xl font-bold text-orange-600">
-                    {sitePerformance?.activeParking || 0}
-                  </p>
-                </div>
-              </div>
-            </div>
+        {/* Tab Navigation */}
+        <div className="flex gap-2 mb-6 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab("approvals")}
+            className={`px-4 py-3 font-semibold transition-all border-b-2 ${
+              activeTab === "approvals"
+                ? "border-purple-600 text-purple-600"
+                : "border-transparent text-gray-600 hover:text-gray-800"
+            }`}>
+            Driver Approvals
+            {pendingApprovals.length > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                {pendingApprovals.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("stats")}
+            className={`px-4 py-3 font-semibold transition-all border-b-2 ${
+              activeTab === "stats"
+                ? "border-purple-600 text-purple-600"
+                : "border-transparent text-gray-600 hover:text-gray-800"
+            }`}>
+            Site Statistics
+          </button>
+        </div>
 
-            {/* Site Card */}
-            {selectedSiteData && (
-              <div className="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl p-6 shadow-lg text-white">
-                <h3 className="text-xl font-bold mb-2">
-                  {selectedSiteData.name}
+        {/* Content */}
+        {activeTab === "approvals" && (
+          <div className="space-y-4">
+            {/* Pending Approvals */}
+            {pendingApprovals.length > 0 && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 mb-3">
+                  Pending Approvals ({pendingApprovals.length})
                 </h3>
-                <p className="text-purple-100 mb-4">
-                  {selectedSiteData.location}
-                </p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white bg-opacity-20 rounded-xl p-3 backdrop-blur">
-                    <p className="text-xs text-purple-100 font-semibold mb-1">
-                      Site ID
-                    </p>
-                    <p className="text-lg font-bold">{selectedSiteData.id}</p>
-                  </div>
-                  <div className="bg-white bg-opacity-20 rounded-xl p-3 backdrop-blur">
-                    <p className="text-xs text-purple-100 font-semibold mb-1">
-                      Status
-                    </p>
-                    <p className="text-lg font-bold">Active</p>
-                  </div>
+                <div className="space-y-3 mb-6">
+                  {pendingApprovals.map(approval => (
+                    <div
+                      key={approval.id}
+                      className="bg-white border-2 border-yellow-300 rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                            <User size={24} className="text-yellow-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-gray-800">
+                              {approval.driverName}
+                            </h4>
+                            <p className="text-xs text-gray-600">
+                              Applied on{" "}
+                              {new Date(
+                                approval.createdAt
+                              ).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="bg-yellow-100 text-yellow-800 text-xs font-bold px-3 py-1 rounded-full">
+                          Pending
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleApprove(approval)}
+                          className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-2">
+                          <CheckCircle size={18} />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleReject(approval)}
+                          className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-2">
+                          <XCircle size={18} />
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">
-              Driver Approvals Pending
-            </h2>
-            {pendingDrivers.length > 0 ? (
-              pendingDrivers.map(driver => (
-                <div
-                  key={driver.id}
-                  className="bg-white rounded-2xl p-5 shadow-md border-2 border-indigo-100">
-                  {/* Driver Info */}
-                  <div className="mb-4 pb-4 border-b border-gray-200">
-                    <p className="text-lg font-bold text-gray-800 mb-1">
-                      {driver.name}
-                    </p>
-                    <p className="text-sm text-gray-600">{driver.email}</p>
-                  </div>
 
-                  {/* Details */}
-                  <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
-                    <div>
-                      <p className="text-xs text-gray-600 font-semibold">
-                        PHONE
-                      </p>
-                      <p className="text-gray-800 font-semibold">
-                        {driver.phone}
-                      </p>
+            {/* Approved Drivers */}
+            {approvedDrivers.length > 0 && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 mb-3">
+                  Approved Drivers ({approvedDrivers.length})
+                </h3>
+                <div className="space-y-2">
+                  {approvedDrivers.map(approval => (
+                    <div
+                      key={approval.id}
+                      className="bg-white border border-green-200 rounded-xl p-3 flex items-center gap-3">
+                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <CheckCircle size={16} className="text-green-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-800">
+                          {approval.driverName}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          Approved on{" "}
+                          {new Date(approval.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded">
+                        Active
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-gray-600 font-semibold">
-                        LICENSE
-                      </p>
-                      <p className="text-gray-800 font-semibold">
-                        {driver.licenseNumber}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mb-4 pb-4 border-b border-gray-200">
-                    <p className="text-xs text-gray-600 font-semibold">
-                      EXPERIENCE
-                    </p>
-                    <p className="text-gray-800 font-semibold">
-                      {driver.experience}
-                    </p>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => handleApproveDriver(driver.id)}
-                      className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
-                      <Check size={18} weight="bold" />
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => handleRejectDriver(driver.id)}
-                      className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
-                      <X size={18} weight="bold" />
-                      Reject
-                    </button>
-                  </div>
+                  ))}
                 </div>
-              ))
-            ) : (
+              </div>
+            )}
+
+            {approvals.length === 0 && (
               <div className="text-center py-12">
-                <p className="text-gray-600 font-semibold">
-                  No pending driver approvals
-                </p>
+                <p className="text-gray-600">No driver approvals to manage</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "stats" && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold text-gray-800 mb-3">
+              Site Performance ({stats.length})
+            </h3>
+            {stats.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">No site data available</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {stats.map(site => (
+                  <div
+                    key={site.siteId}
+                    className="bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <MapPin size={20} className="text-purple-600" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-gray-800">
+                            {site.siteName}
+                          </h4>
+                          <p className="text-xs text-gray-600">
+                            {site.activeValets} valets active
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-blue-50 rounded-lg p-3">
+                        <p className="text-xs text-blue-600 font-semibold mb-1">
+                          TOTAL SESSIONS
+                        </p>
+                        <p className="text-2xl font-bold text-blue-900">
+                          {site.totalSessions}
+                        </p>
+                      </div>
+                      <div className="bg-green-50 rounded-lg p-3">
+                        <p className="text-xs text-green-600 font-semibold mb-1">
+                          REVENUE
+                        </p>
+                        <p className="text-2xl font-bold text-green-900">
+                          ₹{site.revenue}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
