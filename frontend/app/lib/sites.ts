@@ -13,10 +13,10 @@ export interface SitePerformance {
 }
 
 export const PARKING_SITES: Site[] = [
-  { id: "1", name: "Downtown Parking Lot", location: "123 Main St" },
-  { id: "2", name: "Mall Parking", location: "456 Shopping Center" },
-  { id: "3", name: "Airport Terminal", location: "789 Airport Rd" },
-  { id: "4", name: "Beach Parking", location: "321 Coastal Ave" },
+  { id: "1", name: "Inorbit Mall", location: "Kukatpally, Hyderabad" },
+  { id: "2", name: "Phoenix Courtyard", location: "Necklace Road, Hyderabad" },
+  { id: "3", name: "Prestige Tech Park", location: "HITEC City, Hyderabad" },
+  { id: "4", name: "Forum Bengaluru", location: "Koramangala, Bangalore" },
 ];
 
 export const SITE_PERFORMANCE_DATA: Record<string, SitePerformance> = {

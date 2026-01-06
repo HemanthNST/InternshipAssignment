@@ -30,7 +30,7 @@ export default function UserHome() {
   const [currentActiveParkings, setCurrentActiveParkings] = useState([
     {
       id: 1,
-      location: "Inorbit Mall",
+      location: "Inorbit Mall, Hyderabad",
       vehicle: "MH 12 AB 1234",
       entryTime: "01:08 pm",
       duration: "14m",
@@ -55,8 +55,8 @@ export default function UserHome() {
   const [recentParkings, setRecentParkings] = useState([
     {
       id: 1,
-      location: "Phoenix Mall",
-      address: "Lower Parel, Mumbai",
+      location: "Phoenix Courtyard",
+      address: "Necklace Road, Hyderabad",
       vehicle: "MH 12 AB 1234",
       date: "8 Dec 2025",
       time: "4h 15m",
@@ -65,8 +65,8 @@ export default function UserHome() {
     },
     {
       id: 2,
-      location: "Central Plaza",
-      address: "Andheri West, Mumbai",
+      location: "Prestige Tech Park",
+      address: "HITEC City, Hyderabad",
       vehicle: "MH 12 AB 1234",
       date: "6 Dec 2025",
       time: "2h 30m",
@@ -620,7 +620,9 @@ export default function UserHome() {
                   <span className="font-bold text-red-600">-₹150</span>
                 </div>
                 <div className="flex justify-between px-4 py-2 bg-gray-100 rounded-lg">
-                  <span className="text-gray-800">Phoenix Mall • Dec 8</span>
+                  <span className="text-gray-800">
+                    Phoenix Courtyard • Jan 2
+                  </span>
                   <span className="font-bold text-red-600">-₹180</span>
                 </div>
               </div>

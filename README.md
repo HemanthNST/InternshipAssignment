@@ -1,85 +1,78 @@
-# Smart Parking Management System - Project Architecture
+# Smart Parking Management System
+
+A comprehensive parking lot management system with role-based dashboards for Users, Drivers, Managers, and Super Admins.
 
 ## Overview
 
-A comprehensive parking lot management system with 4 user roles: User, Driver, Manager, and Super Admin.
+**Smart Parking** is a full-stack web application that simulates a complete parking lot management workflow:
 
-## Technology Stack
+- **Users** can park and retrieve vehicles, view tickets, and track parking history
+- **Drivers** receive parking/retrieval assignments and manage their daily tasks
+- **Managers** monitor all parking sessions, manage valets, and handle reassignments
+- **Super Admins** oversee system-wide performance metrics and driver approvals across multiple parking sites
 
-- **Frontend**: Next.js 14 + React 18 + Tailwind CSS (deployed on Vercel)
-- **Backend**: Express.js + TypeScript (deployed on Render)
+## Tech Stack
+
+- **Frontend**: Next.js 14 + React 18 + Tailwind CSS (Vercel)
+- **Backend**: Express.js + TypeScript (Render)
 - **Database**: PostgreSQL via Supabase
-- **Design**: Mobile-first responsive design
+- **Design**: Mobile-first responsive UI
 
-## Project Structure
+## Quick Start
 
-```
-BrandWorksUpdated/
-├── frontend/                 # Next.js Frontend
-│   ├── app/                  # Next.js app directory
-│   │   ├── page.tsx          # Role selection landing page
-│   │   ├── user/
-│   │   │   └── page.tsx      # User dashboard (Home, Ticket, History, Settings)
-│   │   ├── driver/
-│   │   │   └── page.tsx      # Driver interface (Coming Soon)
-│   │   ├── manager/
-│   │   │   └── page.tsx      # Manager interface (Coming Soon)
-│   │   ├── superAdmin/
-│   │   │   └── page.tsx      # Super Admin interface (Coming Soon)
-│   │   └── layout.tsx        # Root layout
-│   ├── components/           # Reusable components
-│   ├── lib/                  # Utility functions & API client
-│   ├── store/                # Zustand state management
-│   ├── types/                # TypeScript types
-│   ├── styles/               # Global styles
-│   ├── package.json
-│   ├── tailwind.config.js
-│   ├── next.config.js
-│   ├── tsconfig.json
-│   ├── .env.local            # Frontend environment variables
-│   └── .gitignore
-│
-├── backend/                  # Express.js Backend
-│   ├── src/
-│   │   ├── server.ts         # Main server file
-│   │   ├── config/
-│   │   │   └── supabase.ts   # Supabase configuration
-│   │   ├── database/
-│   │   │   └── schema.sql    # Database schema (camelCase)
-│   │   ├── types/
-│   │   │   └── env.d.ts      # Environment types
-│   │   ├── routes/           # API routes (to be implemented)
-│   │   ├── controllers/      # Route handlers (to be implemented)
-│   │   ├── middleware/       # Custom middleware (to be implemented)
-│   │   └── services/         # Business logic (to be implemented)
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── .env                  # Backend environment variables (secret)
-│   └── .gitignore
-│
-├── INSTRUCTIONS.md           # Project requirements
-├── USER_UI_WORKFLOW.md       # User role requirements
-├── DRIVER_UI_WORKFLOW.md     # Driver role requirements (if provided)
-└── README.md                 # This file
-```
-## Running the Project
 ### Frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
-# Visit http://localhost:3000
+# http://localhost:3000
 ```
 
 ### Backend
+
 ```bash
 cd backend
 npm install
-npm run dev
-# Backend runs on http://localhost:8000
+npm run build
+npm start
+# http://localhost:8000
 ```
 
-## Notes
-- All simulations are client-side (QR scanning, payment processing)
-- No actual payments are processed
-- Responsive design optimized for mobile devices
+## Features
+
+### User Dashboard
+
+- Scan to park (simulated QR scanning)
+- Select vehicle, location, and payment method
+- View active parking details
+- Track vehicle retrieval requests
+- Browse recent parkings and history
+
+### Driver Interface
+
+- Receive parking/retrieval assignments
+- Accept and complete assignments with simulated loading states
+- Track daily statistics (parkings, retrievals, earnings)
+- Real-time status updates on current assignment
+
+### Manager Dashboard
+
+- Search and filter parking sessions by status
+- View car and customer details
+- Call valets directly
+- Reassign valets with a modal interface
+- Track payments and parking locations
+
+### Super Admin
+
+- **Overview**: Site performance metrics, daily collections, statistics
+- **Approvals**: Manage pending driver approvals with approve/reject actions
+- Multi-site performance comparison
+
+## Key Highlights
+
+- Fully simulated workflows (no real payments/QR scanning)
+- Responsive design optimized for mobile
+- Dynamic site data (Hyderabad & Bangalore locations)
+- Real-time status tracking across all roles
